@@ -8,7 +8,6 @@ Dependencies:
 pip install torch
 sudo apt install -y nvidia-fs-dkms nvidia-fs-tools
 sudo apt install -y fio nvidia-gds
-/opt/nvidia/gds/tools/gdscheck.py
 ```
 
 Run: 
