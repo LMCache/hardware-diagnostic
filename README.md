@@ -1,7 +1,18 @@
 # QuickStart
 
 Should be on some Linux Machine with CUDA installed
+
+Dependencies: 
 ```bash
+pip install torch
+sudo apt install -y nvidia-fs-dkms nvidia-fs-tools
+sudo apt install -y fio nvidia-gds
+/opt/nvidia/gds/tools/gdscheck.py
+```
+
+Run: 
+```bash
+python diagnostics.py
 ```
 
 # Metrics
@@ -72,18 +83,8 @@ fio --name=cpu-writetest \
     --iodepth=32 \
     --group_reporting
 
-# GPU -> CPU
-fio --name=gds-test \
-    --filename=/mnt/nvme0n1p1/testfile \
-    --size=1G \
-    --rw=read \
-    --bs=4M \
-    --ioengine=libcufile \
-    --iodepth=1 \
-    --direct=1 \
-    --cuda_malloc=malloc \
-    --verify=0 \
-    --numjobs=1
-
-# Disk 
+# GPU <-> Disk
+sudo mkdir -p /mnt/nvme0n1p1
+sudo mount /dev/nvme0n1p1 /mnt/nvme0n1p1
+sudo chown $USER:$USER /mnt/nvme0n1p1
 ```

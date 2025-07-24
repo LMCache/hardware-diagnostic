@@ -3,6 +3,8 @@ import re
 import json
 import os
 from pathlib import Path
+import ctypes
+import time
 
 def safe_run(cmd: str) -> str | None:
     """Run a shell command and return its stdout, or None if it fails.
@@ -162,6 +164,9 @@ def get_cpu_info():
 
 # 3. Disk
 
+def get_disk_info():
+    pass
+
 def get_nvme_mountpoint() -> str:
     """Return the first mountpoint of an NVMe device if any, else /tmp.
     The command here mirrors the one documented in README.md."""
@@ -204,9 +209,12 @@ def run_fio_test(directory: str, mode: str) -> dict:
     bw_match = re.search(r"BW=([0-9]+)MiB/s", output, flags=re.IGNORECASE)
     iops_match = re.search(r"IOPS=([0-9]+)", output, flags=re.IGNORECASE)
 
+    # Custom field names per requirements
+    prefix = "Disk -> CPU" if mode == "read" else "CPU -> Disk"
+
     return {
-        f"{mode.title()} BW (MiB/s)": int(bw_match.group(1)) if bw_match else "Unknown",
-        f"{mode.title()} IOPS": int(iops_match.group(1)) if iops_match else "Unknown"
+        f"{prefix} BW (MiB/s)": int(bw_match.group(1)) if bw_match else "Unknown",
+        f"{prefix} IOPS": int(iops_match.group(1)) if iops_match else "Unknown"
     }
 
 
@@ -233,10 +241,124 @@ def run_disk_benchmark() -> dict:
     return result
 
 
+# ---------------- GPU <-> Disk Benchmark (GDS) -----------------
 
 
+def run_gpu_disk_benchmark(mountpoint: str) -> dict:
+    """Benchmark direct GPU ↔ Disk transfers using NVIDIA GDS (libcufile).
+    Returns bandwidth in GB/s for both directions or a meaningful error string
+    if prerequisites are missing (CUDA GPU, PyTorch, cufile)."""
 
+    # Lazy imports to avoid hard dependency when library is absent.
+    try:
+        import torch  # type: ignore
+        import cufile  # type: ignore
+        from cufile import CuFile  # type: ignore
+    except ImportError:
+        return {
+            "GPU -> Disk BW (GB/s)": "cufile or torch unavailable",
+            "GPU -> Disk IOPS": "cufile or torch unavailable",
+            "Disk -> GPU BW (GB/s)": "cufile or torch unavailable",
+            "Disk -> GPU IOPS": "cufile or torch unavailable"
+        }
 
+    if not torch.cuda.is_available():
+        return {
+            "GPU -> Disk BW (GB/s)": "No CUDA GPU detected",
+            "GPU -> Disk IOPS": "No CUDA GPU detected",
+            "Disk -> GPU BW (GB/s)": "No CUDA GPU detected",
+            "Disk -> GPU IOPS": "No CUDA GPU detected"
+        }
+
+    FILE_SIZE = 256 * 1024 * 1024  # 256 MB
+    BLOCK_SIZE = 4 * 1024 * 1024   # 4 MB
+    file_path = os.path.join(mountpoint, "gds_testfile.bin")
+    USE_DIRECT_IO = True
+
+    # Allocate a tensor on the first CUDA device
+    tensor = torch.empty(FILE_SIZE // 4, dtype=torch.float32, device="cuda")
+    dev_ptr = ctypes.c_void_p(tensor.data_ptr())
+
+    # Register CuFile driver (no-op if already registered)
+    _ = cufile.CuFileDriver()
+
+    # Ensure file exists with the right size
+    with open(file_path, "wb") as f:
+        f.truncate(FILE_SIZE)
+
+    results: dict[str, float | str] = {}
+
+    # --- GPU -> Disk (write) ---
+    try:
+        with CuFile(file_path, "r+", use_direct_io=USE_DIRECT_IO) as f:
+            torch.cuda.synchronize()
+            start = time.perf_counter()
+            f.write(dev_ptr, FILE_SIZE, file_offset=0, dev_offset=0)
+            torch.cuda.synchronize()
+            end = time.perf_counter()
+            elapsed = end - start
+            bw_gb_s = FILE_SIZE / elapsed / 1e9  # GB/s
+            iops = (bw_gb_s * 1e9) / BLOCK_SIZE  # ops per second
+            results["GPU -> Disk BW (GB/s)"] = round(bw_gb_s, 2)
+            results["GPU -> Disk IOPS"] = int(iops)
+    except Exception as e:  # broad catch to continue other tests
+        results["GPU -> Disk BW (GB/s)"] = f"Failed ({e.__class__.__name__})"
+        results["GPU -> Disk IOPS"] = f"Failed ({e.__class__.__name__})"
+
+    # Clear tensor before read
+    tensor.zero_()
+    torch.cuda.synchronize()
+
+    # --- Disk -> GPU (read) ---
+    try:
+        with CuFile(file_path, "r", use_direct_io=USE_DIRECT_IO) as f:
+            torch.cuda.synchronize()
+            start = time.perf_counter()
+            f.read(dev_ptr, FILE_SIZE, file_offset=0, dev_offset=0)
+            torch.cuda.synchronize()
+            end = time.perf_counter()
+            elapsed = end - start
+            bw_gb_s = FILE_SIZE / elapsed / 1e9  # GB/s
+            iops = (bw_gb_s * 1e9) / BLOCK_SIZE
+            results["Disk -> GPU BW (GB/s)"] = round(bw_gb_s, 2)
+            results["Disk -> GPU IOPS"] = int(iops)
+    except Exception as e:
+        results["Disk -> GPU BW (GB/s)"] = f"Failed ({e.__class__.__name__})"
+        results["Disk -> GPU IOPS"] = f"Failed ({e.__class__.__name__})"
+
+    # Cleanup
+    try:
+        os.remove(file_path)
+    except OSError:
+        pass
+
+    return results
+
+def get_disk_info() -> dict:
+    """Gather disk performance information for both CPU and GPU paths."""
+    mountpoint = get_nvme_mountpoint()
+
+    result: dict[str, object] = {"NVMe Detected": mountpoint != "/tmp"}
+
+    # --- CPU <-> Disk benchmarks via fio ---
+    bench_dir = os.path.join(mountpoint, "fio-multifile")
+    Path(bench_dir).mkdir(parents=True, exist_ok=True)
+
+    result.update(run_fio_test(bench_dir, "read"))   # Disk -> CPU
+    result.update(run_fio_test(bench_dir, "write"))  # CPU -> Disk
+
+    # Cleanup benchmark files generated by fio
+    try:
+        for f in Path(bench_dir).iterdir():
+            f.unlink(missing_ok=True)  # type: ignore[arg-type]
+        Path(bench_dir).rmdir()
+    except OSError:
+        pass
+
+    # --- GPU <-> Disk benchmarks via CuFile ---
+    result.update(run_gpu_disk_benchmark(mountpoint))
+
+    return result
 
 
 # 4. NIC
@@ -250,6 +372,6 @@ if __name__ == "__main__":
     results = {}
     results["GPU"] = get_gpu_info()
     results["CPU"] = get_cpu_info()
-    results["Disk"] = run_disk_benchmark()
+    results["Disk"] = get_disk_info()
     results["NIC"] = get_nic_info()
     print(json.dumps(results, indent=2))
