@@ -2,6 +2,7 @@ import subprocess
 import re
 import json
 import os
+import sys
 from pathlib import Path
 import ctypes
 import time
@@ -11,8 +12,43 @@ def safe_run(cmd: str) -> str | None:
     All stderr output is suppressed to keep logs clean."""
     try:
         return subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL).strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        # Record the failure for later diagnostics
+        _log_command_error(cmd, str(e))
         return None
+
+
+# ---------------- Error logging & progress helpers -----------------
+
+# Accumulates all command failures so they can be surfaced at the end
+ERRORS: list[str] = []
+
+# Quick suggestions to help the user resolve missing tools
+_SUGGESTIONS: dict[str, str] = {
+    "nvidia-smi": "Install NVIDIA drivers / CUDA toolkit to get nvidia-smi.",
+    "lspci": "Install pciutils (e.g. `sudo apt install pciutils`).",
+    "lsblk": "Install util-linux (e.g. `sudo apt install util-linux`).",
+    "fio": "Install fio benchmark tool (e.g. `sudo apt install fio`).",
+    "ibv_devinfo": "Install rdma-core (e.g. `sudo apt install rdma-core`).",
+    "modinfo": "Install kmod (e.g. `sudo apt install kmod`).",
+    "lsmod": "Install kmod (e.g. `sudo apt install kmod`).",
+    "ibstat": "Install rdma-core for InfiniBand diagnostics.",
+    "cufile": "Install NVIDIA GDS libraries (`nvidia-fs-dkms` and `nvidia-fs-tools`).",
+}
+
+
+def _log_command_error(cmd: str, err: str) -> None:
+    exe = cmd.split()[0]
+    suggestion = _SUGGESTIONS.get(exe)
+    msg = f"Command failed: '{cmd}'. Error: {err}"
+    if suggestion:
+        msg += f". Suggestion: {suggestion}"
+    ERRORS.append(msg)
+
+
+def progress(msg: str) -> None:
+    """Print a progress message immediately (stderr) so the user sees activity."""
+    print(f"[diagnostics] {msg}", file=sys.stderr, flush=True)
 
 # 1. GPU
 
@@ -79,6 +115,9 @@ BANDWIDTH_PER_LANE_GB = {
     5: 4.0,
     6: 8.0
 }
+
+# Map PCIe line rate (GT/s) to generation index used in BANDWIDTH_PER_LANE_GB
+GT_TO_GEN = {2: 1, 5: 2, 8: 3, 16: 4, 32: 5, 64: 6}
 
 def run_cmd(cmd: str) -> str | None:
     """Wrapper around safe_run for legacy callers within this module."""
@@ -212,10 +251,60 @@ def run_fio_test(directory: str, mode: str) -> dict:
     # Custom field names per requirements
     prefix = "Disk -> CPU" if mode == "read" else "CPU -> Disk"
 
+    if bw_match:
+        bw_mib = int(bw_match.group(1))
+        bw_gb = round(bw_mib / 1024, 2)  # Convert to GB/s (base-2 GiB/s approx)
+    else:
+        bw_gb = "Unknown"
+
     return {
-        f"{prefix} BW (MiB/s)": int(bw_match.group(1)) if bw_match else "Unknown",
+        f"{prefix} BW (GB/s)": bw_gb,
         f"{prefix} IOPS": int(iops_match.group(1)) if iops_match else "Unknown"
     }
+
+
+# ---------------- NIC helpers -----------------
+
+
+def parse_nic_bandwidth() -> dict:
+    """Return NIC PCIe bandwidth keyed by PCI address as {addr: GB/s}."""
+
+    output = safe_run("lspci | grep -E 'Ethernet controller|Infiniband controller|Network controller'")
+    if not output:
+        return {"NIC PCIe BW (GB/s)": "Unavailable"}
+
+    bandwidths: dict[str, float] = {}
+    for line in output.splitlines():
+        pci_addr = line.split()[0]
+        detail = safe_run(f"sudo lspci -s {pci_addr} -vv")
+        if not detail:
+            continue
+
+        # Prefer LnkSta, fall back to LnkCap
+        lnk_line = next((l for l in detail.splitlines() if "LnkSta:" in l), "")
+        if not lnk_line:
+            lnk_line = next((l for l in detail.splitlines() if "LnkCap:" in l), "")
+        if not lnk_line:
+            continue
+
+        speed_match = re.search(r"Speed\s+([0-9.]+)GT/s", lnk_line)
+        width_match = re.search(r"Width\s+x([0-9]+)", lnk_line)
+        if not (speed_match and width_match):
+            continue
+
+        gt = float(speed_match.group(1))
+        width = int(width_match.group(1))
+        gen_key = int(round(gt))
+        gen = GT_TO_GEN.get(gen_key)
+
+        if gen and gen in BANDWIDTH_PER_LANE_GB:
+            bw = BANDWIDTH_PER_LANE_GB[gen] * width
+        else:
+            bw = gt * 0.985 * width * 0.125  # rough fallback
+
+        bandwidths[pci_addr] = round(bw, 2)
+
+    return {"NIC PCIe BW (GB/s)": bandwidths or "Unavailable"}
 
 
 def run_disk_benchmark() -> dict:
@@ -364,14 +453,218 @@ def get_disk_info() -> dict:
 # 4. NIC
 
 def get_nic_info():
-    pass
+    """Collect NIC/RDMA related information following section 4 of the README.
+
+    The function tries to stay resilient on systems that may not have RDMA / Mellanox
+    hardware or the related user-space tools installed. Any missing information is
+    marked as "Unknown" rather than raising.
+    """
+
+    info: dict[str, object] = {}
+
+    # --- RDMA & IB devices --------------------------------------------------
+    rdma_devs_output = safe_run("ls /sys/class/infiniband")
+    rdma_devices = rdma_devs_output.splitlines() if rdma_devs_output else []
+    info["RDMA NICs"] = len(rdma_devices)
+
+    ib_device_count = 0
+    transport_types: dict[str, str] = {}
+    for dev in rdma_devices:
+        devinfo_out = safe_run(f"ibv_devinfo -d {dev} | grep transport")
+        if devinfo_out:
+            # Example line: "\ttransport:          InfiniBand (0)"
+            transport_match = re.search(r"transport:\s*([A-Za-z]+)", devinfo_out)
+            if transport_match:
+                transport_types[dev] = transport_match.group(1)
+                if transport_match.group(1).lower().startswith("ib"):
+                    ib_device_count += 1
+        else:
+            # Fallback if ibv_devinfo is absent – mark as unknown.
+            transport_types[dev] = "Unknown"
+
+    info["IB Device Count"] = ib_device_count
+    if transport_types:
+        info["Device Transport Types"] = transport_types
+
+    # --- Total NICs via lspci ----------------------------------------------
+    nic_pci_out = safe_run("lspci | grep -E 'Ethernet controller|Infiniband controller|Network controller'")
+    nic_lines = nic_pci_out.splitlines() if nic_pci_out else []
+    info["Total NICs"] = len(nic_lines)
+
+    # --- Mellanox devices via PCI-IDs --------------------------------------
+    mlx_lines = [line for line in nic_lines if re.search(r"mell", line, flags=re.IGNORECASE)]
+    info["Mellanox Device Count"] = len(mlx_lines)
+
+    # --- NIC PCIe bandwidth (run once to reuse) ----------------------------
+    bandwidth_result = parse_nic_bandwidth()
+    nic_bw_map = bandwidth_result.get("NIC PCIe BW (GB/s)") if isinstance(bandwidth_result, dict) else {}
+
+    if mlx_lines:
+        info["Mellanox PCI Entries"] = mlx_lines
+
+        # Coupled details: map PCI addr → description & BW
+        mell_details: dict[str, dict[str, object]] = {}
+        for line in mlx_lines:
+            pci_addr = line.split()[0]
+            mell_details[pci_addr] = {
+                "Description": line,
+                "BW (GB/s)": nic_bw_map.get(pci_addr, "Unknown") if isinstance(nic_bw_map, dict) else "Unknown",
+            }
+        info["Mellanox PCI Details"] = mell_details
+
+    # --- Loaded RDMA driver modules ----------------------------------------
+    driver_out = safe_run("lsmod | grep -E 'ib_core|mlx5_core|mlx5_ib|ib_uverbs|rdma_ucm|rdma_cm'")
+    drivers: list[str] = []
+    if driver_out:
+        for line in driver_out.splitlines():
+            module_name = line.split()[0]
+            drivers.append(module_name)
+    info["RDMA Drivers Loaded"] = drivers or "None"
+
+    # --- rdma-core user-space tools installed? -----------------------------
+    rdma_core_installed = False
+    if safe_run("dpkg -l | grep rdma-core"):
+        rdma_core_installed = True
+    elif safe_run("rpm -qa | grep rdma-core"):
+        rdma_core_installed = True
+    info["rdma-core Installed"] = rdma_core_installed
+
+    # --- MLNX_OFED version --------------------------------------------------
+    ofed_version_line = safe_run("modinfo mlx5_core | grep ^version")
+    info["MLNX_OFED Version"] = ofed_version_line.split()[-1] if ofed_version_line else "Unknown"
+
+    # --- PCIe bandwidth -----------------------------------------------------
+    info.update(bandwidth_result)
+
+    return info
+
 
 # --- Main ---
 
 if __name__ == "__main__":
-    results = {}
+    progress("Starting system diagnostics")
+
+    results: dict[str, object] = {}
+
+    progress("Collecting GPU info…")
     results["GPU"] = get_gpu_info()
+
+    progress("Collecting CPU info…")
     results["CPU"] = get_cpu_info()
+
+    progress("Running disk benchmarks (this may take a minute)…")
     results["Disk"] = get_disk_info()
+
+    progress("Collecting NIC / RDMA info…")
     results["NIC"] = get_nic_info()
+
+    # Append any captured errors
+    if ERRORS:
+        results["Errors"] = ERRORS
+
+    progress("Diagnostics complete")
+
     print(json.dumps(results, indent=2))
+
+    # ---------------- LMCache report -----------------
+    def _size_str_to_gb(size_str: str) -> float | None:
+        """Convert strings like '128G', '62Gi', '512M' to GB (binary GiB)."""
+        match = re.match(r"([0-9.]+)\s*([KMGTP])", size_str, flags=re.IGNORECASE)
+        if not match:
+            return None
+        val = float(match.group(1))
+        unit = match.group(2).upper()
+        factor = {"K": 1/1024/1024, "M": 1/1024, "G": 1, "T": 1024, "P": 1024*1024}.get(unit)
+        if factor is None:
+            return None
+        return round(val * factor, 2)
+
+    def _available_disk_gb(path: str) -> float | None:
+        df_out = safe_run(f"df -BG --output=avail {path} | tail -1")
+        if not df_out:
+            return None
+        try:
+            gb = int(df_out.strip()[:-1])  # strip trailing 'G'
+            return float(gb)
+        except ValueError:
+            return None
+
+    progress("Generating LMCache recommendations…")
+
+    cpu_ram_str = results.get("CPU", {}).get("RAM Size", "")  # e.g. '125G'
+    total_ram_gb = _size_str_to_gb(cpu_ram_str) or 0
+    rec_cpu = round(total_ram_gb * 0.8, 2)
+
+    # Disk availability
+    mountpoint = get_nvme_mountpoint()
+    avail_disk_gb = _available_disk_gb(mountpoint) or 0
+    rec_disk = round(avail_disk_gb * 0.8, 2)
+
+    # GDS enabled? (CuFile import + GPU available)
+    try:
+        import torch  # type: ignore
+        import cufile  # type: ignore
+        gds_enabled = torch.cuda.is_available()
+    except Exception:
+        gds_enabled = False
+
+    nvlink = results.get("GPU", {}).get("Has NVLink", False)
+    rdma_present = results.get("NIC", {}).get("RDMA NICs", 0) > 0
+
+    # Network BW estimate – use max NIC PCIe BW as basic proxy
+    nic_bw_map = results.get("NIC", {}).get("NIC PCIe BW (GB/s)", {})
+    if isinstance(nic_bw_map, dict) and nic_bw_map:
+        peak_nic_bw = max(nic_bw_map.values())
+    else:
+        peak_nic_bw = None
+
+    if isinstance(peak_nic_bw, (int, float)):
+        if peak_nic_bw >= 50:
+            nic_class = "High"
+        elif peak_nic_bw >= 32:
+            nic_class = "Medium"
+        else:
+            nic_class = "Low (CacheGen recommended)"
+    else:
+        nic_class = "Unknown"
+
+    # Disk BW subpoints
+    disk_section = results.get("Disk", {})
+    disk_read_bw = disk_section.get("Disk -> CPU BW (GB/s)")
+    disk_write_bw = disk_section.get("CPU -> Disk BW (GB/s)")
+
+    # GDS BW subpoints
+    gds_read_bw = disk_section.get("Disk -> GPU BW (GB/s)")
+    gds_write_bw = disk_section.get("GPU -> Disk BW (GB/s)")
+
+    # NVLink node count
+    nv_bonds = results.get("GPU", {}).get("NVLink Bonds") or {}
+    connected_gpus = set()
+    for src, pairs in nv_bonds.items():
+        connected_gpus.add(src)
+        for dst, _ in pairs:
+            connected_gpus.add(dst)
+    nvlink_nodes = len(connected_gpus)
+
+    print("\n\nLMCache Configuration Report")
+    print("------------------------------")
+    print(f"Recommended LMCACHE_MAX_LOCAL_CPU_SIZE total (split across workers): {rec_cpu} GB (~80% of CPU RAM)")
+    print(f"Recommended LMCACHE_MAX_LOCAL_DISK_SIZE total (split across workers): {rec_disk} GB (~80% of available disk)")
+
+    # Disk configuration details
+    print("Disk Configuration:")
+    print(f"  • Disk → CPU BW: {disk_read_bw} GB/s")
+    print(f"  • CPU → Disk BW: {disk_write_bw} GB/s")
+
+    # GDS details
+    print("GDS (GPU Direct Storage):")
+    print(f"  • GDS enabled: {gds_enabled}")
+    print(f"  • Disk → GPU BW: {gds_read_bw} GB/s")
+    print(f"  • GPU → Disk BW: {gds_write_bw} GB/s")
+
+    # Network & PD
+    nic_bw_display = peak_nic_bw if peak_nic_bw is not None else "Unknown"
+    print(f"Network: Peak NIC PCIe BW: {nic_bw_display} GB/s ({nic_class})")
+    print(f"Intra-node Prefill Disaggregation (NVLink): {nvlink} (connected GPUs: {nvlink_nodes})")
+    print(f"Cross-node Prefill Disaggregation (RDMA/Infiniband): {rdma_present}")
+    print("--------------------------------\n\n\n")
