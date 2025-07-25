@@ -36,7 +36,7 @@ Run:
 sudo python diagnostics.py
 ```
 
-Examples of outputs can be found in `results.txt`
+Examples of outputs on various nodes can be found in `results.md`
 
 # Metrics
 
