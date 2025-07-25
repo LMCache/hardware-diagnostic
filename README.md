@@ -10,11 +10,11 @@ Dependencies:
 
 ```bash
 pip install torch numpy
-sudo apt install -y util-linux
-sudo apt install -y nvidia-fs-dkms 
 sudo apt install -y fio 
 
+
 # mainly for GDS, skip if you don't care about these metrics
+sudo apt install -y nvidia-fs-dkms 
 sudo mkdir -p /usr/share/keyrings
 curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/3bf863cc.pub \
   | gpg --dearmor | sudo tee /usr/share/keyrings/cuda-archive-keyring.gpg > /dev/null
