@@ -565,6 +565,12 @@ if __name__ == "__main__":
     progress("Diagnostics complete")
 
     print(json.dumps(results, indent=2))
+    # Save diagnostics results to JSON file
+    try:
+        with open("diagnostics_results.json", "w") as f:
+            json.dump(results, f, indent=2)
+    except IOError as e:
+        progress(f"Failed to write diagnostics results JSON: {e}")
 
     # ---------------- LMCache report -----------------
     def _size_str_to_gb(size_str: str) -> float | None:
@@ -646,6 +652,28 @@ if __name__ == "__main__":
             connected_gpus.add(dst)
     nvlink_nodes = len(connected_gpus)
 
+    lmcache_config = {
+        "LMCACHE_MAX_LOCAL_CPU_SIZE_GB": rec_cpu,
+        "LMCACHE_MAX_LOCAL_DISK_SIZE_GB": rec_disk,
+        "Disk->CPU_BW_GBps": disk_read_bw,
+        "CPU->Disk_BW_GBps": disk_write_bw,
+        "GDS_Enabled": gds_enabled,
+        "Disk->GPU_BW_GBps": gds_read_bw,
+        "GPU->Disk_BW_GBps": gds_write_bw,
+        "Peak_NIC_PCIe_BW_GBps": peak_nic_bw,
+        "NIC_Classification": nic_class,
+        "Has_NVLink": nvlink,
+        "NVLink_Node_Count": nvlink_nodes,
+        "RDMA_Present": rdma_present
+    }
+
+    # Save LMCache configuration recommendations as JSON
+    try:
+        with open("lmcache_recommendations.json", "w") as f:
+            json.dump(lmcache_config, f, indent=2)
+    except IOError as e:
+        progress(f"Failed to write LMCache recommendations JSON: {e}")
+
     print("\n\nLMCache Configuration Report")
     print("------------------------------")
     print(f"Recommended LMCACHE_MAX_LOCAL_CPU_SIZE total (split across workers): {rec_cpu} GB (~80% of CPU RAM)")
@@ -665,6 +693,6 @@ if __name__ == "__main__":
     # Network & PD
     nic_bw_display = peak_nic_bw if peak_nic_bw is not None else "Unknown"
     print(f"Network: Peak NIC PCIe BW: {nic_bw_display} GB/s ({nic_class})")
-    print(f"Intra-node Prefill Disaggregation (NVLink): {nvlink} (connected GPUs: {nvlink_nodes})")
-    print(f"Cross-node Prefill Disaggregation (RDMA/Infiniband): {rdma_present}")
+    print(f"Intra-node Prefill Disaggregation Possible (via NVLink): {nvlink} (connected GPUs: {nvlink_nodes})")
+    print(f"Cross-node Prefill Disaggregation Possible (via RDMA/Infiniband): {rdma_present}")
     print("--------------------------------\n\n\n")
