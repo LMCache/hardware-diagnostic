@@ -27,7 +27,7 @@ ERRORS: list[str] = []
 _SUGGESTIONS: dict[str, str] = {
     "nvidia-smi": "Install NVIDIA drivers / CUDA toolkit to get nvidia-smi.",
     "lspci": "Install pciutils (e.g. `sudo apt install pciutils`).",
-    "lsblk": "Install util-linux (e.g. `sudo apt install util-linux`).",
+    "lsblk": "NVMe is disabled (This is not a real error, just a warning).",
     "fio": "Install fio benchmark tool (e.g. `sudo apt install fio`).",
     "ibv_devinfo": "Install rdma-core (e.g. `sudo apt install rdma-core`).",
     "modinfo": "Install kmod (e.g. `sudo apt install kmod`).",

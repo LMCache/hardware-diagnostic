@@ -13,10 +13,8 @@ pip install torch numpy
 sudo apt install -y util-linux
 sudo apt install -y nvidia-fs-dkms 
 sudo apt install -y fio 
-sudo apt install -y nvidia-gds
-sudo apt install -y libcufile-12-8
 
-# if simple installation of cufile doesn't work, please try:
+# mainly for GDS, skip if you don't care about these metrics
 sudo mkdir -p /usr/share/keyrings
 curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/3bf863cc.pub \
   | gpg --dearmor | sudo tee /usr/share/keyrings/cuda-archive-keyring.gpg > /dev/null
@@ -28,17 +26,13 @@ https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/ /" \
 sudo apt update
 sudo apt install -y libcufile-12-8 libcufile-dev-12-8 gds-tools-12-8
 sudo ln -s /usr/local/cuda-12.8/targets/x86_64-linux/lib/libcufile.so.1.13.1 \
-  /usr/local/cuda-12.8/targets/x86_64-linux/lib/libcufile.so
+  /usr/local/cuda-12.8/targets/x86_64-linux/lib/libcufile.so || true
 echo 'export LD_LIBRARY_PATH=/usr/local/cuda-12.8/targets/x86_64-linux/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
 source ~/.bashrc
 ```
 
 Run: 
 ```bash
-# result will be printed to stdout
-# as well as
-# diagnostics_results.json
-# lmcache_recommendations.json
 python diagnostics.py
 ```
 

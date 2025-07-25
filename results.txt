@@ -157,14 +157,14 @@
   },
   "Disk": {
     "NVMe Detected": true,
-    "Disk -> CPU BW (GB/s)": 5.65,
-    "Disk -> CPU IOPS": 180,
-    "CPU -> Disk BW (GB/s)": 0.85,
+    "Disk -> CPU BW (GB/s)": 5.27,
+    "Disk -> CPU IOPS": 168,
+    "CPU -> Disk BW (GB/s)": 0.86,
     "CPU -> Disk IOPS": 27,
-    "GPU -> Disk BW (GB/s)": 0.75,
-    "GPU -> Disk IOPS": 179,
-    "Disk -> GPU BW (GB/s)": 5.33,
-    "Disk -> GPU IOPS": 1270
+    "GPU -> Disk BW (GB/s)": 0.77,
+    "GPU -> Disk IOPS": 183,
+    "Disk -> GPU BW (GB/s)": 5.38,
+    "Disk -> GPU IOPS": 1281
   },
   "NIC": {
     "RDMA NICs": 11,
@@ -290,17 +290,17 @@
 LMCache Configuration Report
 ------------------------------
 Recommended LMCACHE_MAX_LOCAL_CPU_SIZE total (split across workers): 1638.4 GB (~80% of CPU RAM)
-Recommended LMCACHE_MAX_LOCAL_DISK_SIZE total (split across workers): 256.8 GB (~80% of available disk)
+Recommended LMCACHE_MAX_LOCAL_DISK_SIZE total (split across workers): 219.2 GB (~80% of available disk)
 Disk Configuration:
-  • Disk → CPU BW: 5.65 GB/s
-  • CPU → Disk BW: 0.85 GB/s
+  • Disk → CPU BW: 5.27 GB/s
+  • CPU → Disk BW: 0.86 GB/s
 GDS (GPU Direct Storage):
   • GDS enabled: True
-  • Disk → GPU BW: 5.33 GB/s
-  • GPU → Disk BW: 0.75 GB/s
+  • Disk → GPU BW: 5.38 GB/s
+  • GPU → Disk BW: 0.77 GB/s
 Network: Peak NIC PCIe BW: 64.0 GB/s (High)
-Intra-node Prefill Disaggregation (NVLink): True (connected GPUs: 8)
-Cross-node Prefill Disaggregation (RDMA/Infiniband): True
+Intra-node Prefill Disaggregation Possible (via NVLink): True (connected GPUs: 8)
+Cross-node Prefill Disaggregation Possible (via RDMA/Infiniband): True
 --------------------------------
 ```
 
