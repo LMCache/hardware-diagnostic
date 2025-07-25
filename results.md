@@ -1,6 +1,6 @@
 # Example Outputs on various machines
 
-1. 8x H100 GMI node:
+1. 8x H100 GMI Cloud (https://www.gmicloud.ai/) node (everything available!):
 ```text
 [diagnostics] Starting system diagnostics
 [diagnostics] Collecting GPU info…
