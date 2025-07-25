@@ -304,9 +304,206 @@ Cross-node Prefill Disaggregation Possible (via RDMA/Infiniband): True
 --------------------------------
 ```
 
-2. Lambda Labs 4x H100 (80 GB SXM5) 104 vCPUs, 900 GiB RAM, 11 TiB SSD:
+2. 1x H100 (80 GB SXM5) 26 vCPUs, 225 GiB RAM, 2.8 TiB SSD
+```text
+[diagnostics] Starting system diagnostics
+[diagnostics] Collecting GPU info…
+[diagnostics] Collecting CPU info…
+[diagnostics] Running disk benchmarks (this may take a minute)…
+[diagnostics] Collecting NIC / RDMA info…
+[diagnostics] Diagnostics complete
+{
+  "GPU": {
+    "GPU Type": "H100",
+    "GPU VRAM": "81559 MiB",
+    "VRAM Type": "HBM3",
+    "GPU Count": 1,
+    "Has NVLink": true,
+    "NVLink Bonds": null
+  },
+  "CPU": {
+    "Chip Architecture": "x86_64",
+    "CPU Model": "Intel(R) Xeon(R) Platinum 8480+",
+    "CPU Core Count": 13,
+    "CPU Thread Count": 26,
+    "Operating System": "Ubuntu 22.04.5 LTS",
+    "RAM Size": "221Gi",
+    "PCIe Gen": 5,
+    "Link Width": 16,
+    "Estimated BW (GB/s)": 64.0
+  },
+  "Disk": {
+    "NVMe Detected": false,
+    "Disk -> CPU BW (GB/s)": "Unknown",
+    "Disk -> CPU IOPS": 350,
+    "CPU -> Disk BW (GB/s)": 6.91,
+    "CPU -> Disk IOPS": 221,
+    "GPU -> Disk BW (GB/s)": "cufile or torch unavailable",
+    "GPU -> Disk IOPS": "cufile or torch unavailable",
+    "Disk -> GPU BW (GB/s)": "cufile or torch unavailable",
+    "Disk -> GPU IOPS": "cufile or torch unavailable"
+  },
+  "NIC": {
+    "RDMA NICs": 1,
+    "IB Device Count": 0,
+    "Device Transport Types": {
+      "mlx5_0": "InfiniBand"
+    },
+    "Total NICs": 1,
+    "Mellanox Device Count": 1,
+    "Mellanox PCI Entries": [
+      "05:00.0 Ethernet controller: Mellanox Technologies ConnectX Family mlx5Gen Virtual Function"
+    ],
+    "Mellanox PCI Details": {
+      "05:00.0": {
+        "Description": "05:00.0 Ethernet controller: Mellanox Technologies ConnectX Family mlx5Gen Virtual Function",
+        "BW (GB/s)": "Unknown"
+      }
+    },
+    "RDMA Drivers Loaded": [
+      "rdma_ucm",
+      "rdma_cm",
+      "iw_cm",
+      "ib_cm",
+      "mlx5_ib",
+      "macsec",
+      "ib_uverbs",
+      "ib_core",
+      "mlx5_core",
+      "mlxfw",
+      "psample",
+      "mlxdevm",
+      "tls",
+      "mlx_compat",
+      "pci_hyperv_intf"
+    ],
+    "rdma-core Installed": true,
+    "MLNX_OFED Version": "24.10-2.1.8",
+    "NIC PCIe BW (GB/s)": "Unavailable"
+  },
+  "Errors": [
+    "Command failed: 'lsblk -o NAME,HCTL,SIZE,MOUNTPOINT,MODEL | grep nvme'. Error: Command 'lsblk -o NAME,HCTL,SIZE,MOUNTPOINT,MODEL | grep nvme' returned non-zero exit status 1.. Suggestion: NVMe is disabled (This is not a real error, just a warning)."
+  ]
+}
+[diagnostics] Generating LMCache recommendations…
 
+
+LMCache Configuration Report
+------------------------------
+Recommended LMCACHE_MAX_LOCAL_CPU_SIZE total (split across workers): 176.8 GB (~80% of CPU RAM)
+Recommended LMCACHE_MAX_LOCAL_DISK_SIZE total (split across workers): 2160.0 GB (~80% of available disk)
+Disk Configuration:
+  • Disk → CPU BW: Unknown GB/s
+  • CPU → Disk BW: 6.91 GB/s
+GDS (GPU Direct Storage):
+  • GDS enabled: False
+  • Disk → GPU BW: cufile or torch unavailable GB/s
+  • GPU → Disk BW: cufile or torch unavailable GB/s
+Network: Peak NIC PCIe BW: Unknown GB/s (Unknown)
+Intra-node Prefill Disaggregation Possible (via NVLink): True (connected GPUs: 0)
+Cross-node Prefill Disaggregation Possible (via RDMA/Infiniband): True
+--------------------------------
+```
 
 
 3. 1x H100 (80 GB PCIe) 26 vCPUs, 200 GiB RAM, 1 TiB SSD
 
+```text
+[diagnostics] Starting system diagnostics
+[diagnostics] Collecting GPU info…
+[diagnostics] Collecting CPU info…
+[diagnostics] Running disk benchmarks (this may take a minute)…
+[diagnostics] Collecting NIC / RDMA info…
+[diagnostics] Diagnostics complete
+{
+  "GPU": {
+    "GPU Type": "H100",
+    "GPU VRAM": "81559 MiB",
+    "VRAM Type": "Unknown",
+    "GPU Count": 1,
+    "Has NVLink": true,
+    "NVLink Bonds": null
+  },
+  "CPU": {
+    "Chip Architecture": "x86_64",
+    "CPU Model": "Intel(R) Xeon(R) Platinum 8480+",
+    "CPU Core Count": 26,
+    "CPU Thread Count": 26,
+    "Operating System": "Ubuntu 22.04.5 LTS",
+    "RAM Size": "221Gi",
+    "PCIe Gen": 5,
+    "Link Width": 16,
+    "Estimated BW (GB/s)": 64.0
+  },
+  "Disk": {
+    "NVMe Detected": false,
+    "Disk -> CPU BW (GB/s)": 8.75,
+    "Disk -> CPU IOPS": 280,
+    "CPU -> Disk BW (GB/s)": 2.9,
+    "CPU -> Disk IOPS": 92,
+    "GPU -> Disk BW (GB/s)": "cufile or torch unavailable",
+    "GPU -> Disk IOPS": "cufile or torch unavailable",
+    "Disk -> GPU BW (GB/s)": "cufile or torch unavailable",
+    "Disk -> GPU IOPS": "cufile or torch unavailable"
+  },
+  "NIC": {
+    "RDMA NICs": 1,
+    "IB Device Count": 0,
+    "Device Transport Types": {
+      "mlx5_0": "InfiniBand"
+    },
+    "Total NICs": 1,
+    "Mellanox Device Count": 1,
+    "Mellanox PCI Entries": [
+      "05:00.0 Ethernet controller: Mellanox Technologies MT28800 Family [ConnectX-5 Ex Virtual Function]"
+    ],
+    "Mellanox PCI Details": {
+      "05:00.0": {
+        "Description": "05:00.0 Ethernet controller: Mellanox Technologies MT28800 Family [ConnectX-5 Ex Virtual Function]",
+        "BW (GB/s)": "Unknown"
+      }
+    },
+    "RDMA Drivers Loaded": [
+      "rdma_ucm",
+      "rdma_cm",
+      "iw_cm",
+      "ib_cm",
+      "mlx5_ib",
+      "macsec",
+      "ib_uverbs",
+      "ib_core",
+      "mlx5_core",
+      "mlxfw",
+      "psample",
+      "mlxdevm",
+      "tls",
+      "mlx_compat",
+      "pci_hyperv_intf"
+    ],
+    "rdma-core Installed": true,
+    "MLNX_OFED Version": "24.10-2.1.8",
+    "NIC PCIe BW (GB/s)": "Unavailable"
+  },
+  "Errors": [
+    "Command failed: 'lsblk -o NAME,HCTL,SIZE,MOUNTPOINT,MODEL | grep nvme'. Error: Command 'lsblk -o NAME,HCTL,SIZE,MOUNTPOINT,MODEL | grep nvme' returned non-zero exit status 1.. Suggestion: NVMe is disabled (This is not a real error, just a warning)."
+  ]
+}
+[diagnostics] Generating LMCache recommendations…
+
+
+LMCache Configuration Report
+------------------------------
+Recommended LMCACHE_MAX_LOCAL_CPU_SIZE total (split across workers): 176.8 GB (~80% of CPU RAM)
+Recommended LMCACHE_MAX_LOCAL_DISK_SIZE total (split across workers): 765.6 GB (~80% of available disk)
+Disk Configuration:
+  • Disk → CPU BW: 8.75 GB/s
+  • CPU → Disk BW: 2.9 GB/s
+GDS (GPU Direct Storage):
+  • GDS enabled: False
+  • Disk → GPU BW: cufile or torch unavailable GB/s
+  • GPU → Disk BW: cufile or torch unavailable GB/s
+Network: Peak NIC PCIe BW: Unknown GB/s (Unknown)
+Intra-node Prefill Disaggregation Possible (via NVLink): True (connected GPUs: 0)
+Cross-node Prefill Disaggregation Possible (via RDMA/Infiniband): True
+--------------------------------
+```

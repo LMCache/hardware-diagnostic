@@ -13,7 +13,7 @@ pip install torch numpy
 sudo apt install -y fio 
 
 
-# mainly for GDS, skip if you don't care about these metrics
+# mainly for GDS, skip if you don't care about these metrics / using GDS
 sudo apt install -y nvidia-fs-dkms 
 sudo mkdir -p /usr/share/keyrings
 curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/3bf863cc.pub \
@@ -33,7 +33,7 @@ source ~/.bashrc
 
 Run: 
 ```bash
-python diagnostics.py
+sudo python diagnostics.py
 ```
 
 Examples of outputs can be found in `results.txt`
