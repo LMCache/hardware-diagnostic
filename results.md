@@ -1,6 +1,6 @@
-# Example Outputs on various machines
+# Example Outputs on Cloud Nodes
 
-1. 8x H100 GMI Cloud (https://www.gmicloud.ai/) node (everything available!):
+## 1. 8x H100 GMI Cloud (https://www.gmicloud.ai/) node (everything available!):
 ```text
 [diagnostics] Starting system diagnostics
 [diagnostics] Collecting GPU info…
@@ -304,7 +304,7 @@ Cross-node Prefill Disaggregation Possible (via RDMA/Infiniband): True
 --------------------------------
 ```
 
-2. 1x H100 (80 GB SXM5) 26 vCPUs, 225 GiB RAM, 2.8 TiB SSD
+## 2. Lambda Labs 1x H100 (80 GB SXM5) 26 vCPUs, 225 GiB RAM, 2.8 TiB SSD
 ```text
 [diagnostics] Starting system diagnostics
 [diagnostics] Collecting GPU info…
@@ -406,7 +406,7 @@ Cross-node Prefill Disaggregation Possible (via RDMA/Infiniband): True
 ```
 
 
-3. 1x H100 (80 GB PCIe) 26 vCPUs, 200 GiB RAM, 1 TiB SSD
+## 3. Lambda Labs 1x H100 (80 GB PCIe) 26 vCPUs, 200 GiB RAM, 1 TiB SSD
 
 ```text
 [diagnostics] Starting system diagnostics
